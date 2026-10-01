@@ -2,7 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { Code2, ListChecks, Pencil, Trash2 } from "lucide-react";
+import { Calendar as CalendarIcon, Code2, ListChecks, Pencil, Trash2 } from "lucide-react";
+import { format } from "date-fns";
 import { toast } from "sonner";
 import { createEvent, listParticipants } from "@/lib/admin.functions";
 import { MCQ_QUESTION_COUNT, formatDateTime } from "@/lib/debugify";
@@ -10,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CodingForm, McqForm, emptyCoding, emptyMcq, fromLocalInput, type CodingDraft, type McqDraft } from "@/components/admin/QuestionForms";
 import { cn } from "@/lib/utils";
 
@@ -91,12 +94,75 @@ function NewEvent() {
 
         {step === 1 && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2"><Label>Event name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Debugify Round 1" /></div>
-            <div className="space-y-1.5"><Label>Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
-            <div />
-            <div className="space-y-1.5"><Label>Start time</Label><Input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></div>
-            <div className="space-y-1.5"><Label>End time</Label><Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
-            {startsAt && endsAt && endsAt <= startsAt && <p className="text-sm text-destructive sm:col-span-2">End time must be after start time.</p>}
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Event name</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Debugify Round 1" />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Event Date</Label>
+              <div className="flex flex-wrap items-center gap-3">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full sm:w-80 justify-start text-left font-normal h-11 border-border/80",
+                        !date && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4 text-neon-cyan" />
+                      {date ? format(new Date(`${date}T00:00:00`), "PPP") : <span>Click to choose event date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={date ? new Date(`${date}T00:00:00`) : undefined}
+                      onSelect={(d) => setDate(d ? format(d, "yyyy-MM-dd") : "")}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-3 text-xs"
+                    onClick={() => setDate(format(new Date(), "yyyy-MM-dd"))}
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-3 text-xs"
+                    onClick={() => {
+                      const tomorrow = new Date();
+                      tomorrow.setDate(tomorrow.getDate() + 1);
+                      setDate(format(tomorrow, "yyyy-MM-dd"));
+                    }}
+                  >
+                    Tomorrow
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Start time</Label>
+              <Input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="h-11" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>End time</Label>
+              <Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="h-11" />
+            </div>
+            {startsAt && endsAt && endsAt <= startsAt && (
+              <p className="text-sm text-destructive sm:col-span-2">End time must be after start time.</p>
+            )}
           </div>
         )}
 
