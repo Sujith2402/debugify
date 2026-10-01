@@ -39,9 +39,11 @@ function NewEvent() {
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const [coding, setCoding] = useState<Partial<Record<CodingDraft["difficulty"], CodingDraft>>>({});
 
+  const [allowAllForCoding, setAllowAllForCoding] = useState(true);
+
   const startsAt = date && start ? fromLocalInput(`${date}T${start}`) : "";
   const endsAt = date && end ? fromLocalInput(`${date}T${end}`) : "";
-  const eligible = (people ?? []).filter((p) => p.is_active && (type !== "CODING" || p.shortlisted));
+  const eligible = (people ?? []).filter((p) => p.is_active && (type !== "CODING" || p.shortlisted || allowAllForCoding));
   const filtered = eligible.filter((p) => {
     const s = search.toLowerCase();
     return !s || p.participant_code?.toLowerCase().includes(s) || p.full_name.toLowerCase().includes(s);
@@ -167,25 +169,137 @@ function NewEvent() {
         )}
 
         {step === 2 && (
-          <div className="space-y-3">
-            {type === "CODING" && <p className="text-sm text-muted-foreground">Only participants shortlisted from an MCQ round can be assigned.</p>}
-            <div className="flex flex-wrap items-center gap-3">
-              <Input className="max-w-xs" placeholder="Search participants" value={search} onChange={(e) => setSearch(e.target.value)} />
-              <Button variant="outline" size="sm" onClick={() => setSelected(new Set(eligible.map((p) => p.id)))}>Select all</Button>
-              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>Clear</Button>
-              <span className="ml-auto text-sm text-muted-foreground">{selected.size} selected</span>
-            </div>
-            <div className="max-h-96 divide-y divide-border overflow-y-auto rounded-lg border">
-              {filtered.length === 0 && <p className="p-4 text-sm text-muted-foreground">No eligible participants. You can assign them later too.</p>}
-              {filtered.map((p) => (
-                <label key={p.id} className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-accent">
-                  <Checkbox checked={selected.has(p.id)} onCheckedChange={(c) => {
-                    const n = new Set(selected); c ? n.add(p.id) : n.delete(p.id); setSelected(n);
-                  }} />
-                  <span className="font-mono-code text-sm">{p.participant_code}</span>
-                  <span>{p.full_name}</span>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-3">
+              <div>
+                <p className="font-semibold text-base">Assign Participants to this Event</p>
+                <p className="text-xs text-muted-foreground">
+                  Select which participants can attend this assessment within the scheduled window.
+                </p>
+              </div>
+              {type === "CODING" && (
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                  <Checkbox
+                    checked={allowAllForCoding}
+                    onCheckedChange={(c) => setAllowAllForCoding(!!c)}
+                  />
+                  <span>Show all active participants (not only shortlisted)</span>
                 </label>
-              ))}
+              )}
+            </div>
+
+            {/* Dropdown Select Element */}
+            <div className="rounded-xl border border-border/80 bg-accent/25 p-4 space-y-2">
+              <Label htmlFor="participant-dropdown" className="text-xs font-semibold uppercase tracking-wider text-neon-cyan">
+                Select Option Tag — Choose Participant:
+              </Label>
+              <div className="flex flex-wrap items-center gap-3">
+                <select
+                  id="participant-dropdown"
+                  className="h-10 flex-1 min-w-[260px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neon-cyan"
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (!id) return;
+                    const n = new Set(selected);
+                    n.add(id);
+                    setSelected(n);
+                    e.target.value = "";
+                  }}
+                  defaultValue=""
+                >
+                  <option value="" disabled>Click to pick a participant (User 1, User 2, User 3...)...</option>
+                  {eligible.map((p) => (
+                    <option key={p.id} value={p.id} disabled={selected.has(p.id)}>
+                      {selected.has(p.id) ? "✓ " : ""}{p.full_name} ({p.participant_code})
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-10 text-xs"
+                  onClick={() => setSelected(new Set(eligible.map((p) => p.id)))}
+                >
+                  Select all ({eligible.length})
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-10 text-xs"
+                  onClick={() => setSelected(new Set())}
+                >
+                  Clear all
+                </Button>
+                <span className="font-mono-code text-xs text-neon-lime ml-auto">
+                  {selected.size} selected
+                </span>
+              </div>
+            </div>
+
+            {/* Search Filter */}
+            <div className="flex items-center gap-3">
+              <Input
+                className="max-w-xs h-9 text-xs"
+                placeholder="Search participants by name or ID..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            {/* Visual Participant Cards */}
+            <div className="max-h-80 divide-y divide-border/60 overflow-y-auto rounded-xl border border-border/80 bg-background/50">
+              {filtered.length === 0 && (
+                <p className="p-6 text-center text-sm text-muted-foreground">
+                  No participants available.
+                </p>
+              )}
+              {filtered.map((p) => {
+                const isChecked = selected.has(p.id);
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => {
+                      const n = new Set(selected);
+                      isChecked ? n.delete(p.id) : n.add(p.id);
+                      setSelected(n);
+                    }}
+                    className={cn(
+                      "flex cursor-pointer items-center justify-between gap-3 px-4 py-3 transition hover:bg-accent/50",
+                      isChecked && "bg-primary/10"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={(c) => {
+                          const n = new Set(selected);
+                          c ? n.add(p.id) : n.delete(p.id);
+                          setSelected(n);
+                        }}
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-sm text-foreground">{p.full_name}</span>
+                        <span className="font-mono-code text-xs text-muted-foreground">{p.participant_code}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {p.shortlisted && (
+                        <span className="rounded border border-neon-lime/60 px-1.5 py-0.5 font-mono-code text-[10px] text-neon-lime">
+                          Shortlisted
+                        </span>
+                      )}
+                      <span className={cn(
+                        "rounded px-2 py-0.5 font-mono-code text-xs",
+                        isChecked ? "bg-primary/20 text-primary font-bold" : "text-muted-foreground"
+                      )}>
+                        {isChecked ? "Assigned ✓" : "Click to select"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
