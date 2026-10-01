@@ -73,7 +73,27 @@ function ParticipantLogin({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     if (!code.trim() || !password) return;
     setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: participantEmail(code), password });
+
+    const email = participantEmail(code);
+    let { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    // Support both player1/player01 or player2/player02 format automatically
+    if (error) {
+      let altPassword = password;
+      const m1 = password.match(/^player(\d)$/i);
+      const m2 = password.match(/^player0(\d)$/i);
+      if (m1) {
+        altPassword = `player0${m1[1]}`;
+      } else if (m2) {
+        altPassword = `player${m2[1]}`;
+      }
+
+      if (altPassword !== password) {
+        const retry = await supabase.auth.signInWithPassword({ email, password: altPassword });
+        error = retry.error;
+      }
+    }
+
     setBusy(false);
     if (error) {
       toast.error("Wrong participant ID or password.");
