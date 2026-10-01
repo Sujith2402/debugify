@@ -11,6 +11,7 @@ export const getMyIdentity = createServerFn({ method: "GET" })
       supabase.from("profiles").select("full_name, participant_code, is_active").eq("id", userId).maybeSingle(),
     ]);
     const isAdmin = (roles ?? []).some((r) => r.role === "admin");
+    const userMeta = (claims?.user_metadata || {}) as Record<string, any>;
     const { findParticipantById } = await import("@/lib/participants.store");
     const stored = findParticipantById(userId);
     const fullName = profile?.full_name || stored?.full_name || userMeta?.full_name || (isAdmin ? "Coordinator" : "Participant");
