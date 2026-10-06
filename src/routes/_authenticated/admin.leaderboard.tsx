@@ -98,11 +98,11 @@ function CodingLeaderboard({ eventId }: { eventId: string }) {
             <TableHead className="w-16">Rank</TableHead>
             <TableHead>Participant</TableHead>
             <TableHead>Name</TableHead>
-            <TableHead className="text-right">Easy</TableHead>
-            <TableHead className="text-right">Medium</TableHead>
-            <TableHead className="text-right">Hard</TableHead>
+            <TableHead className="text-right">Easy <span className="text-muted-foreground font-normal">/40</span></TableHead>
+            <TableHead className="text-right">Medium <span className="text-muted-foreground font-normal">/40</span></TableHead>
+            <TableHead className="text-right">Hard <span className="text-muted-foreground font-normal">/20</span></TableHead>
             <TableHead className="text-right font-bold">Total</TableHead>
-            <TableHead className="text-right">/ 150</TableHead>
+            <TableHead className="text-right">/ 100</TableHead>
             <TableHead className="text-right">Duration</TableHead>
           </TableRow>
         </TableHeader>
@@ -115,18 +115,18 @@ function CodingLeaderboard({ eventId }: { eventId: string }) {
               </TableCell>
               <TableCell>{row.profile?.full_name ?? "—"}</TableCell>
               <TableCell className="text-right text-sm">
-                {row.byDiff?.EASY?.score ?? "—"}
+                {row.byDiff?.["EASY"]?.score ?? "—"}
               </TableCell>
               <TableCell className="text-right text-sm">
-                {row.byDiff?.MEDIUM?.score ?? "—"}
+                {row.byDiff?.["MEDIUM"]?.score ?? "—"}
               </TableCell>
               <TableCell className="text-right text-sm">
-                {row.byDiff?.HARD?.score ?? "—"}
+                {row.byDiff?.["HARD"]?.score ?? "—"}
               </TableCell>
               <TableCell className="text-right font-display text-lg font-bold text-primary">
                 {row.total_score ?? 0}
               </TableCell>
-              <TableCell className="text-right text-muted-foreground text-sm">150</TableCell>
+              <TableCell className="text-right text-muted-foreground text-sm">100</TableCell>
               <TableCell className="text-right font-mono-code text-sm">
                 {fmtDuration(row.duration)}
               </TableCell>

@@ -27,7 +27,7 @@ export const Route = createFileRoute("/_authenticated/admin/events/$id")({
   component: EventDetail,
 });
 
-const CASES = { EASY: 15, MEDIUM: 15, HARD: 20 } as const;
+const CASES = { EASY: 20, MEDIUM: 20, HARD: 10 } as const;
 type Detail = Awaited<ReturnType<typeof getEventDetail>>;
 
 function useAct<T>(fn: (a: { data: T }) => Promise<unknown>, success?: string) {
@@ -35,7 +35,7 @@ function useAct<T>(fn: (a: { data: T }) => Promise<unknown>, success?: string) {
   const { id } = Route.useParams();
   return useMutation({
     mutationFn: (data: T) => fn({ data }),
-    onSuccess: () => { if (success) toast.success(success); qc.invalidateQueries({ queryKey: ["event", id] }); qc.invalidateQueries({ queryKey: ["events"] }); },
+    onSuccess: () => { if (success) toast.success(success); qc.invalidateQueries({ queryKey: ["event", id] }); qc.invalidateQueries({ queryKey: ["events"] }); qc.invalidateQueries({ queryKey: ["admin-overview"] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 }

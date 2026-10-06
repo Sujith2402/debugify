@@ -14,7 +14,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
   ] }),
   beforeLoad: async () => {
     const me = await getMyIdentity();
-    if (me.role !== "admin") throw redirect({ to: "/dashboard" });
+    if (me.role !== "admin") throw redirect({ to: "/admin-login" });
     return { me };
   },
   component: AdminLayout,

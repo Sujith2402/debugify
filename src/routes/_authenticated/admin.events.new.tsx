@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { Calendar as CalendarIcon, Code2, ListChecks, Pencil, Trash2 } from "lucide-react";
@@ -24,6 +24,7 @@ const STEPS = ["Event type", "Details", "Participants", "Questions", "Review"];
 
 function NewEvent() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const fetchParts = useServerFn(listParticipants);
   const create = useServerFn(createEvent);
   const { data: people } = useQuery({ queryKey: ["participants"], queryFn: () => fetchParts() });
@@ -39,7 +40,8 @@ function NewEvent() {
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const [coding, setCoding] = useState<Partial<Record<CodingDraft["difficulty"], CodingDraft>>>({});
 
-  const [allowAllForCoding, setAllowAllForCoding] = useState(true);
+  // For CODING events default to shortlisted-only so the server doesn't reject non-shortlisted IDs
+  const [allowAllForCoding, setAllowAllForCoding] = useState(false);
 
   const startsAt = date && start ? fromLocalInput(`${date}T${start}`) : "";
   const endsAt = date && end ? fromLocalInput(`${date}T${end}`) : "";
@@ -64,7 +66,13 @@ function NewEvent() {
         mcq: type === "MCQ" ? mcq : [],
         coding: type === "CODING" ? Object.values(coding).filter(Boolean) as CodingDraft[] : [],
       } }),
-    onSuccess: (r) => { toast.success("Event saved as draft"); navigate({ to: "/admin/events/$id", params: { id: r.id } }); },
+    onSuccess: (r) => {
+      // Invalidate overview + events list so the new event appears immediately
+      queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      toast.success("Event created! Redirecting to event page…");
+      navigate({ to: "/admin/events/$id", params: { id: r.id } });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -181,7 +189,11 @@ function NewEvent() {
                 <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
                   <Checkbox
                     checked={allowAllForCoding}
-                    onCheckedChange={(c) => setAllowAllForCoding(!!c)}
+                    onCheckedChange={(c) => {
+                      setAllowAllForCoding(!!c);
+                      // Clear selection when toggling to avoid assigning un-shortlisted participants
+                      setSelected(new Set());
+                    }}
                   />
                   <span>Show all active participants (not only shortlisted)</span>
                 </label>

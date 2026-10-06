@@ -68,7 +68,7 @@ function ShortlistPage() {
   }
 
   const save = useMutation({
-    mutationFn: () => doSetShortlist({ data: { userIds: [...effective] } }),
+    mutationFn: () => doSetShortlist({ data: { userIds: [...effective], eventId } }),
     onSuccess: () => {
       toast.success(`${effective.size} participants shortlisted for Round 2`);
       qc.invalidateQueries({ queryKey: ["shortlist-candidates", eventId] });

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { ArrowLeft, LockKeyhole } from "lucide-react";
@@ -26,6 +26,7 @@ export const Route = createFileRoute("/admin-login")({
 
 function AdminLoginPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const checkAdmin = useServerFn(adminExists);
   const bootstrap = useServerFn(bootstrapAdmin);
   const { data, refetch } = useQuery({ queryKey: ["admin-exists"], queryFn: () => checkAdmin() });
@@ -47,6 +48,7 @@ function AdminLoginPage() {
       if (error) throw new Error("Wrong email or password.");
       const { data: verified, error: verificationError } = await supabase.auth.getUser();
       if (verificationError || !verified.user) throw new Error("Sign-in could not be verified. Please try again.");
+      qc.clear();
       toast.success("Welcome, coordinator!");
       await navigate({ to: "/admin", replace: true });
     } catch (error) {

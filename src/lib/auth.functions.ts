@@ -14,8 +14,8 @@ export const getMyIdentity = createServerFn({ method: "GET" })
     const userMeta = (claims?.user_metadata || {}) as Record<string, any>;
     const { findParticipantById } = await import("@/lib/participants.store");
     const stored = findParticipantById(userId);
-    const fullName = profile?.full_name || stored?.full_name || userMeta?.full_name || (isAdmin ? "Coordinator" : "Participant");
-    const participantCode = profile?.participant_code || stored?.participant_code || userMeta?.participant_code || null;
+    const fullName = profile?.full_name || stored?.full_name || (userMeta["full_name"] as string | undefined) || (isAdmin ? "Coordinator" : "Participant");
+    const participantCode = profile?.participant_code || stored?.participant_code || (userMeta["participant_code"] as string | undefined) || null;
     return {
       userId,
       role: isAdmin ? ("admin" as const) : ("participant" as const),

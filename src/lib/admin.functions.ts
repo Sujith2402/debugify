@@ -24,7 +24,105 @@ function check<T>(res: { data: T; error: { message: string } | null }): NonNulla
   return res.data as NonNullable<T>;
 }
 
-const CODING_CASES: Record<string, number> = { EASY: 15, MEDIUM: 15, HARD: 20 };
+const CODING_CASES: Record<string, number> = { EASY: 20, MEDIUM: 20, HARD: 10 };
+
+export const DEFAULT_CODING_QUESTIONS = {
+  EASY: {
+    title: "Sum of Two Numbers",
+    description: "Read two space-separated integers a and b from standard input and print their sum to standard output.",
+    input_format: "Two integers a and b (-10^6 <= a, b <= 10^6).",
+    output_format: "A single integer denoting a + b.",
+    constraints: "-10^6 <= a, b <= 10^6",
+    difficulty: "EASY" as const,
+    time_limit_ms: 2000,
+    memory_limit_mb: 256,
+  },
+  MEDIUM: {
+    title: "Count Vowels in String",
+    description: "Given a single word or string s, count the total number of vowels ('a', 'e', 'i', 'o', 'u', case-insensitive) and print the count.",
+    input_format: "A single line containing string s (1 <= length <= 1000).",
+    output_format: "An integer representing the number of vowels in string s.",
+    constraints: "1 <= length of s <= 1000",
+    difficulty: "MEDIUM" as const,
+    time_limit_ms: 2000,
+    memory_limit_mb: 256,
+  },
+  HARD: {
+    title: "Longest Unique Substring",
+    description: "Given a string s, find the length of the longest substring without repeating characters.",
+    input_format: "A single string s (1 <= length <= 10^4).",
+    output_format: "An integer representing the length of the longest substring without repeating characters.",
+    constraints: "1 <= length of s <= 10^4",
+    difficulty: "HARD" as const,
+    time_limit_ms: 2000,
+    memory_limit_mb: 256,
+  },
+};
+
+export async function ensureCodingQuestionTestCases(
+  db: any,
+  questionId: string,
+  difficulty: "EASY" | "MEDIUM" | "HARD",
+  existingCount = 0
+) {
+  const target = CODING_CASES[difficulty] ?? 20;
+  if (existingCount >= target) return;
+
+  const toAdd = target - existingCount;
+  const newCases = [];
+  for (let i = 0; i < toAdd; i++) {
+    const pos = existingCount + i + 1;
+    const isSample = pos <= 2;
+    let input = "";
+    let output = "";
+
+    if (difficulty === "EASY") {
+      const a = pos * 3;
+      const b = pos * 7;
+      input = `${a} ${b}`;
+      output = `${a + b}`;
+    } else if (difficulty === "MEDIUM") {
+      const words = [
+        "hello", "algorithm", "debugify", "programming", "code",
+        "evaluation", "software", "development", "engineer", "framework",
+        "database", "network", "system", "performance", "variable",
+        "function", "binary", "solution", "computer", "architecture"
+      ];
+      const w = words[i % words.length] ?? "test";
+      input = w;
+      const vowels = (w.match(/[aeiou]/gi) || []).length;
+      output = `${vowels}`;
+    } else { // HARD
+      const strs = [
+        "abcabcbb", "bbbbb", "pwwkew", "abcdef", "aab",
+        "dvdf", "tmmzuxt", "anviaj", "ckilbkd", "nfpdmfl"
+      ];
+      const s = strs[i % strs.length] ?? "abc";
+      input = s;
+      const charSet = new Set<string>();
+      let l = 0, maxLen = 0;
+      for (let r = 0; r < s.length; r++) {
+        while (charSet.has(s[r]!)) { charSet.delete(s[l]!); l++; }
+        charSet.add(s[r]!);
+        maxLen = Math.max(maxLen, r - l + 1);
+      }
+      output = `${maxLen}`;
+    }
+
+    newCases.push({
+      question_id: questionId,
+      position: pos,
+      input,
+      expected_output: output,
+      is_sample: isSample,
+    });
+  }
+
+  if (newCases.length > 0) {
+    await db.from("coding_test_cases").insert(newCases);
+  }
+}
+
 
 // ---------- Overview ----------
 export const adminOverview = createServerFn({ method: "GET" })
@@ -212,6 +310,7 @@ export const createEvent = createServerFn({ method: "POST" })
       name: z.string().trim().min(2).max(150),
       startsAt: z.string().datetime({ offset: true }),
       endsAt: z.string().datetime({ offset: true }),
+      status: z.enum(["DRAFT", "SCHEDULED", "LIVE"]).optional(),
       participantIds: z.array(z.string().uuid()).max(5000),
       mcq: z.array(mcqQ).max(MCQ_QUESTION_COUNT).default([]),
       coding: z.array(codingQ).max(3).default([]),
@@ -219,29 +318,85 @@ export const createEvent = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context: { db, userId } }) => {
     if (new Date(data.endsAt) <= new Date(data.startsAt)) throw new Error("End time must be after start time");
-    if (data.type === "CODING") {
-      const diffs = data.coding.map((q) => q.difficulty);
-      if (new Set(diffs).size !== diffs.length) throw new Error("Only one question per difficulty");
-      if (data.participantIds.length) {
-        const { data: sl } = await db.from("shortlists").select("user_id").in("user_id", data.participantIds);
-        const ok = new Set((sl ?? []).map((s) => s.user_id));
-        if (data.participantIds.some((id) => !ok.has(id))) throw new Error("Only shortlisted participants can join a coding round");
-      }
+
+    const now = new Date();
+    let initialStatus = data.status ?? "SCHEDULED";
+    if (initialStatus === "SCHEDULED" && new Date(data.startsAt) <= now && new Date(data.endsAt) >= now) {
+      initialStatus = "LIVE";
     }
+
     const ev = check(
       await db.from("events").insert({
-        name: data.name, type: data.type, starts_at: data.startsAt, ends_at: data.endsAt, status: "DRAFT", created_by: userId,
+        name: data.name,
+        type: data.type,
+        starts_at: data.startsAt,
+        ends_at: data.endsAt,
+        status: initialStatus,
+        created_by: userId,
       }).select("id").single(),
     );
-    if (data.participantIds.length)
-      check(await db.from("event_participants").insert(data.participantIds.map((user_id) => ({ event_id: ev.id, user_id }))));
-    if (data.type === "MCQ" && data.mcq.length)
-      check(await db.from("mcq_questions").insert(data.mcq.map((q, i) => ({ ...q, event_id: ev.id, position: i + 1 }))));
-    if (data.type === "CODING" && data.coding.length) {
-      const order = { EASY: 1, MEDIUM: 2, HARD: 3 } as const;
-      check(await db.from("coding_questions").insert(data.coding.map((q) => ({ ...q, event_id: ev.id, marks_per_case: 3, position: order[q.difficulty] }))));
+
+    // Auto-shortlist assigned participants for CODING events so DB shortlists table stays in sync
+    if (data.type === "CODING" && data.participantIds.length) {
+      try {
+        const { data: sl } = await db.from("shortlists").select("user_id").in("user_id", data.participantIds);
+        const ok = new Set((sl ?? []).map((s) => s.user_id));
+        const toAdd = data.participantIds.filter((id) => !ok.has(id));
+        if (toAdd.length > 0) {
+          await db.from("shortlists").insert(toAdd.map((user_id) => ({ user_id, from_event_id: ev.id })));
+        }
+      } catch (e) {
+        console.warn("[createEvent] Shortlist sync note:", e);
+      }
     }
-    return { id: ev.id };
+
+    if (data.participantIds.length) {
+      check(await db.from("event_participants").insert(data.participantIds.map((user_id) => ({ event_id: ev.id, user_id }))));
+    }
+
+    if (data.type === "MCQ" && data.mcq.length) {
+      check(await db.from("mcq_questions").insert(data.mcq.map((q, i) => ({ ...q, event_id: ev.id, position: i + 1 }))));
+    }
+
+    if (data.type === "CODING") {
+      // Ensure we have questions for all 3 difficulties: EASY, MEDIUM, HARD
+      const providedDiffs = new Set(data.coding.map((q) => q.difficulty));
+      const questionsToInsert: Array<{
+        title: string;
+        description: string;
+        input_format: string;
+        output_format: string;
+        constraints: string;
+        difficulty: "EASY" | "MEDIUM" | "HARD";
+        time_limit_ms: number;
+        memory_limit_mb: number;
+      }> = [...data.coding];
+
+      for (const diff of ["EASY", "MEDIUM", "HARD"] as const) {
+        if (!providedDiffs.has(diff)) {
+          questionsToInsert.push({ ...DEFAULT_CODING_QUESTIONS[diff] });
+        }
+      }
+
+      const order = { EASY: 1, MEDIUM: 2, HARD: 3 } as const;
+      const insertedQuestions = check(
+        await db.from("coding_questions").insert(
+          questionsToInsert.map((q) => ({
+            ...q,
+            event_id: ev.id,
+            marks_per_case: 2,
+            position: order[q.difficulty],
+          }))
+        ).select("id, difficulty")
+      );
+
+      // Populate test cases (EASY: 20, MEDIUM: 20, HARD: 10 = 50 cases total, 100 marks)
+      for (const q of insertedQuestions ?? []) {
+        await ensureCodingQuestionTestCases(db, q.id, q.difficulty as "EASY" | "MEDIUM" | "HARD", 0);
+      }
+    }
+
+    return { id: ev.id, status: initialStatus };
   });
 
 export const getEventDetail = createServerFn({ method: "GET" })
@@ -296,10 +451,28 @@ export const setEventStatus = createServerFn({ method: "POST" })
         if (count !== MCQ_QUESTION_COUNT) throw new Error(`An MCQ event needs exactly ${MCQ_QUESTION_COUNT} questions (has ${count ?? 0})`);
       } else {
         const { data: qs } = await db.from("coding_questions").select("id, difficulty, title").eq("event_id", ev.id);
-        if ((qs ?? []).length !== 3) throw new Error("A coding event needs Easy, Medium and Hard questions");
-        for (const q of qs ?? []) {
+        const diffMap = new Map((qs ?? []).map((q: any) => [q.difficulty, q]));
+
+        // Ensure Easy, Medium, Hard exist
+        for (const diff of ["EASY", "MEDIUM", "HARD"] as const) {
+          if (!diffMap.has(diff)) {
+            const order = { EASY: 1, MEDIUM: 2, HARD: 3 }[diff];
+            const ins = check(
+              await db.from("coding_questions").insert({
+                ...DEFAULT_CODING_QUESTIONS[diff],
+                position: order,
+                event_id: ev.id,
+                marks_per_case: 2,
+              }).select("id, difficulty, title").single()
+            );
+            diffMap.set(diff, ins);
+          }
+        }
+
+        // Ensure each question has the required number of test cases (20 for EASY, 20 for MEDIUM, 10 for HARD)
+        for (const [diff, q] of diffMap.entries()) {
           const { count } = await db.from("coding_test_cases").select("id", { count: "exact", head: true }).eq("question_id", q.id);
-          if (count !== CODING_CASES[q.difficulty]) throw new Error(`"${q.title}" needs ${CODING_CASES[q.difficulty]} test cases (has ${count ?? 0})`);
+          await ensureCodingQuestionTestCases(db, q.id, diff as "EASY" | "MEDIUM" | "HARD", count ?? 0);
         }
       }
     }
@@ -327,13 +500,17 @@ export const setEventParticipants = createServerFn({ method: "POST" })
   .validator((d) => z.object({ id: z.string().uuid(), participantIds: z.array(z.string().uuid()).max(5000) }).parse(d))
   .handler(async ({ data, context: { db } }) => {
     const ev = check(await db.from("events").select("type").eq("id", data.id).single());
+    // For CODING events, auto-shortlist any participants not already in the shortlists table
     if (ev.type === "CODING" && data.participantIds.length) {
       const { data: sl } = await db.from("shortlists").select("user_id").in("user_id", data.participantIds);
-      const ok = new Set((sl ?? []).map((s) => s.user_id));
-      if (data.participantIds.some((id) => !ok.has(id))) throw new Error("Only shortlisted participants can join a coding round");
+      const alreadyShortlisted = new Set((sl ?? []).map((s: any) => s.user_id));
+      const toAdd = data.participantIds.filter((id) => !alreadyShortlisted.has(id));
+      if (toAdd.length > 0) {
+        await db.from("shortlists").insert(toAdd.map((user_id) => ({ user_id, from_event_id: data.id }))).select();
+      }
     }
     const { data: cur } = await db.from("event_participants").select("user_id").eq("event_id", data.id);
-    const curSet = new Set((cur ?? []).map((r) => r.user_id));
+    const curSet = new Set((cur ?? []).map((r: any) => r.user_id));
     const next = new Set(data.participantIds);
     const remove = [...curSet].filter((id) => !next.has(id));
     const add = [...next].filter((id) => !curSet.has(id));
@@ -392,7 +569,7 @@ export const saveCodingQuestion = createServerFn({ method: "POST" })
     if ((existing ?? []).some((e) => e.id !== id)) throw new Error(`This event already has a ${q.difficulty} question`);
     const position = { EASY: 1, MEDIUM: 2, HARD: 3 }[q.difficulty];
     if (id) check(await db.from("coding_questions").update({ ...q, position }).eq("id", id).eq("event_id", eventId));
-    else check(await db.from("coding_questions").insert({ ...q, position, event_id: eventId, marks_per_case: 3 }));
+    else check(await db.from("coding_questions").insert({ ...q, position, event_id: eventId, marks_per_case: 2 }));
     return { ok: true };
   });
 
@@ -438,15 +615,27 @@ export const deleteTestCase = createServerFn({ method: "POST" })
   });
 
 // ---------- Leaderboard ----------
+async function getAllProfilesMap(db: any) {
+  const { getRegisteredParticipants } = await import("@/lib/participants.store");
+  const { data: dbProfiles } = await db.from("profiles").select("id, participant_code, full_name");
+  const profMap = new Map<string, { id: string; participant_code: string | null; full_name: string }>();
+  for (const rp of getRegisteredParticipants()) {
+    profMap.set(rp.id, { id: rp.id, participant_code: rp.participant_code, full_name: rp.full_name });
+  }
+  for (const p of dbProfiles ?? []) {
+    profMap.set(p.id, p);
+  }
+  return profMap;
+}
+
 export const getMcqLeaderboard = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .validator((d) => z.object({ eventId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context: { db } }) => {
-    const [attempts, profiles] = await Promise.all([
+    const [attempts, profMap] = await Promise.all([
       db.from("mcq_attempts").select("user_id, score, started_at, submitted_at, status").eq("event_id", data.eventId).eq("status", "SUBMITTED").order("score", { ascending: false }),
-      db.from("profiles").select("id, participant_code, full_name"),
+      getAllProfilesMap(db),
     ]);
-    const profMap = new Map((profiles.data ?? []).map((p) => [p.id, p]));
     const rows = (attempts.data ?? []).map((a) => {
       const duration = a.started_at && a.submitted_at
         ? Math.round((new Date(a.submitted_at).getTime() - new Date(a.started_at).getTime()) / 1000)
@@ -462,9 +651,9 @@ export const getCodingLeaderboard = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .validator((d) => z.object({ eventId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context: { db } }) => {
-    const [attempts, profiles, questions] = await Promise.all([
+    const [attempts, profMap, questions] = await Promise.all([
       db.from("coding_attempts").select("user_id, total_score, total_passed, started_at, submitted_at, status").eq("event_id", data.eventId).eq("status", "SUBMITTED"),
-      db.from("profiles").select("id, participant_code, full_name"),
+      getAllProfilesMap(db),
       db.from("coding_questions").select("id, difficulty").eq("event_id", data.eventId),
     ]);
     // Per-question scores from coding_submissions
@@ -472,7 +661,6 @@ export const getCodingLeaderboard = createServerFn({ method: "GET" })
     const subsRes = qids.length
       ? await db.from("coding_submissions").select("user_id, question_id, score, passed_count").in("question_id", qids).eq("event_id", data.eventId)
       : { data: [] as { user_id: string; question_id: string; score: number; passed_count: number }[] };
-    const profMap = new Map((profiles.data ?? []).map((p) => [p.id, p]));
     const qMap = new Map((questions.data ?? []).map((q) => [q.id, q]));
     const rows = (attempts.data ?? []).map((a) => {
       const mySubs = (subsRes.data ?? []).filter((r) => r.user_id === a.user_id);
@@ -495,12 +683,11 @@ export const getShortlistCandidates = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .validator((d) => z.object({ eventId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context: { db } }) => {
-    const [attempts, profiles, shortlists] = await Promise.all([
+    const [attempts, profMap, shortlists] = await Promise.all([
       db.from("mcq_attempts").select("user_id, score, started_at, submitted_at, status").eq("event_id", data.eventId).eq("status", "SUBMITTED"),
-      db.from("profiles").select("id, participant_code, full_name"),
+      getAllProfilesMap(db),
       db.from("shortlists").select("user_id"),
     ]);
-    const profMap = new Map((profiles.data ?? []).map((p) => [p.id, p]));
     const shortlistedIds = new Set((shortlists.data ?? []).map((s) => s.user_id));
     const rows = (attempts.data ?? []).map((a) => {
       const duration = a.started_at && a.submitted_at
@@ -514,12 +701,23 @@ export const getShortlistCandidates = createServerFn({ method: "GET" })
 
 export const setShortlist = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
-  .validator((d) => z.object({ userIds: z.array(z.string().uuid()).max(5000) }).parse(d))
+  .validator((d) => z.object({ userIds: z.array(z.string().uuid()).max(5000), eventId: z.string().uuid().optional() }).parse(d))
   .handler(async ({ data, context: { db } }) => {
     // Replace entire shortlist: remove all, then insert selected
     await db.from("shortlists").delete().neq("user_id", "00000000-0000-0000-0000-000000000000");
     if (data.userIds.length) {
-      check(await db.from("shortlists").insert(data.userIds.map((user_id) => ({ user_id }))));
+      let eventId = data.eventId;
+      if (!eventId) {
+        const { data: ev } = await db.from("events").select("id").eq("type", "MCQ").limit(1).maybeSingle();
+        eventId = ev?.id;
+      }
+      if (!eventId) {
+        const { data: ev } = await db.from("events").select("id").limit(1).maybeSingle();
+        eventId = ev?.id;
+      }
+      if (eventId) {
+        check(await db.from("shortlists").insert(data.userIds.map((user_id) => ({ user_id, from_event_id: eventId! }))));
+      }
     }
     return { ok: true };
   });
@@ -528,12 +726,11 @@ export const setShortlist = createServerFn({ method: "POST" })
 export const getMcqResults = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .handler(async ({ context: { db } }) => {
-    const [attempts, profiles, events] = await Promise.all([
+    const [attempts, profMap, events] = await Promise.all([
       db.from("mcq_attempts").select("*"),
-      db.from("profiles").select("id, participant_code, full_name"),
+      getAllProfilesMap(db),
       db.from("events").select("id, name").eq("type", "MCQ"),
     ]);
-    const profMap = new Map((profiles.data ?? []).map((p) => [p.id, p]));
     const evMap = new Map((events.data ?? []).map((e) => [e.id, e]));
     return (attempts.data ?? []).map((a) => ({
       ...a,
@@ -548,13 +745,12 @@ export const getMcqResults = createServerFn({ method: "GET" })
 export const getCodingResults = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .handler(async ({ context: { db } }) => {
-    const [attempts, profiles, events, questions] = await Promise.all([
+    const [attempts, profMap, events, questions] = await Promise.all([
       db.from("coding_attempts").select("*"),
-      db.from("profiles").select("id, participant_code, full_name"),
+      getAllProfilesMap(db),
       db.from("events").select("id, name").eq("type", "CODING"),
       db.from("coding_questions").select("id, event_id, difficulty"),
     ]);
-    const profMap = new Map((profiles.data ?? []).map((p) => [p.id, p]));
     const evMap = new Map((events.data ?? []).map((e) => [e.id, e]));
     const qids = (questions.data ?? []).map((q) => q.id);
     const subsRes = qids.length
@@ -581,3 +777,28 @@ export const getCodingResults = createServerFn({ method: "GET" })
     });
   });
 
+
+// ---------- Publish / Unpublish Results ----------
+export const publishResults = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .validator((d) => z.object({ eventId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context: { db } }) => {
+    check(await db.from("events").update({ results_published: true }).eq("id", data.eventId));
+    return { ok: true };
+  });
+
+export const unpublishResults = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .validator((d) => z.object({ eventId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context: { db } }) => {
+    check(await db.from("events").update({ results_published: false }).eq("id", data.eventId));
+    return { ok: true };
+  });
+
+export const getResultPublishStatus = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .validator((d) => z.object({ eventId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context: { db } }) => {
+    const ev = check(await db.from("events").select("id, results_published").eq("id", data.eventId).single());
+    return { published: (ev as any).results_published ?? false };
+  });

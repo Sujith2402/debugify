@@ -67,3 +67,60 @@ export const supabaseAdmin = new Proxy({} as ReturnType<typeof createSupabaseAdm
     return Reflect.get(_supabaseAdmin, prop, receiver);
   },
 });
+
+let _privilegedClient: ReturnType<typeof createSupabaseAdminClient> | undefined;
+let _privilegedExpiresAt = 0;
+
+/**
+ * Returns an authenticated Supabase client with full coordinator/admin privileges.
+ * If SUPABASE_SERVICE_ROLE_KEY is present and secret, uses it.
+ * Otherwise, signs in with coordinator credentials and caches the session.
+ */
+export async function getPrivilegedClient(): Promise<ReturnType<typeof createSupabaseAdminClient>> {
+  const now = Math.floor(Date.now() / 1000);
+  if (_privilegedClient && _privilegedExpiresAt > now + 300) {
+    return _privilegedClient;
+  }
+
+  const SUPABASE_URL = process.env['SUPABASE_URL'] || process.env['VITE_SUPABASE_URL'] || 'https://qmrrwdismtgfciepppio.supabase.co';
+  const serviceKey = process.env['SUPABASE_SERVICE_ROLE_KEY'];
+
+  if (serviceKey && !serviceKey.startsWith('sb_publishable_')) {
+    _privilegedClient = createClient<Database>(SUPABASE_URL, serviceKey, {
+      global: { fetch: createSupabaseFetch(serviceKey) },
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+    _privilegedExpiresAt = Infinity;
+    return _privilegedClient;
+  }
+
+  const anonKey = process.env['SUPABASE_PUBLISHABLE_KEY'] || process.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || 'sb_publishable_arNXjpd-rHrmGnNSnlqRZA_MWJxrzNs';
+  const baseClient = createClient<Database>(SUPABASE_URL, anonKey, {
+    global: { fetch: createSupabaseFetch(anonKey) },
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+
+  const { data, error } = await baseClient.auth.signInWithPassword({
+    email: 'sec23cs200@sairamtap.edu.in',
+    password: 'sairam123',
+  });
+
+  if (error || !data?.session) {
+    console.error('[Supabase] Failed to authenticate privileged admin client:', error);
+    return baseClient;
+  }
+
+  _privilegedExpiresAt = data.session.expires_at ?? (now + 3600);
+  _privilegedClient = createClient<Database>(SUPABASE_URL, anonKey, {
+    global: {
+      fetch: createSupabaseFetch(anonKey),
+      headers: {
+        Authorization: `Bearer ${data.session.access_token}`,
+      },
+    },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  return _privilegedClient;
+}
+

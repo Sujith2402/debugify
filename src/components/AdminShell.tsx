@@ -19,14 +19,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+const NAV: readonly { to: string; label: string; icon: any; exact?: boolean }[] = [
   { to: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
-  { to: "/admin/events", label: "Events", icon: CalendarPlus },
-  { to: "/admin/participants", label: "Participants", icon: Users },
-  { to: "/admin/leaderboard", label: "Leaderboard", icon: Medal },
-  { to: "/admin/shortlist", label: "Shortlisting", icon: Star },
-  { to: "/admin/results", label: "Results", icon: BarChart3 },
-] as const;
+  { to: "/admin/events", label: "Events", icon: CalendarPlus, exact: false },
+  { to: "/admin/participants", label: "Participants", icon: Users, exact: false },
+  { to: "/admin/leaderboard", label: "Leaderboard", icon: Medal, exact: false },
+  { to: "/admin/shortlist", label: "Shortlisting", icon: Star, exact: false },
+  { to: "/admin/results", label: "Results", icon: BarChart3, exact: false },
+];
 
 export function AdminShell({
   name,

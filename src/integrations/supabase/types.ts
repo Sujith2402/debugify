@@ -306,6 +306,7 @@ export type Database = {
           ends_at: string
           id: string
           name: string
+          results_published: boolean
           starts_at: string
           status: string
           type: string
@@ -316,6 +317,7 @@ export type Database = {
           ends_at: string
           id?: string
           name: string
+          results_published?: boolean
           starts_at: string
           status?: string
           type: string
@@ -326,6 +328,7 @@ export type Database = {
           ends_at?: string
           id?: string
           name?: string
+          results_published?: boolean
           starts_at?: string
           status?: string
           type?: string
